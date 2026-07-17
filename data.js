@@ -54,18 +54,3 @@ const CATEGORIES = {
   },
   "기타": {}, // 소분류 없이 직접 입력용
 };
-
-// ===== 쇼핑 중요도 5단계 =====
-// value가 작을수록 급한 것. DB의 priority 컬럼(1~5)과 짝을 이룸.
-const PRIORITIES = [
-  { value: 1, label: "Must Buy", color: "#dc2626" }, // 당장 사야 함
-  { value: 2, label: "High",     color: "#ea580c" },
-  { value: 3, label: "Normal",   color: "#ca8a04" },
-  { value: 4, label: "Low",      color: "#16a34a" },
-  { value: 5, label: "Wish List", color: "#64748b" }, // 희망 사항
-];
-
-// priority 숫자로 라벨/색을 바로 찾기 위한 도우미
-function priorityInfo(value) {
-  return PRIORITIES.find((p) => p.value === value) || PRIORITIES[2];
-}
