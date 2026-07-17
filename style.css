@@ -1,0 +1,305 @@
+/* 모든 요소의 크기 계산을 예측 가능하게 만드는 기본 설정 */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  background: #f4f6f8;
+  display: flex;
+  justify-content: center;
+  padding: 40px 16px;
+}
+
+.container {
+  width: 100%;
+  max-width: 480px; /* 폰에서도 PC에서도 적당한 폭 */
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+h1 {
+  font-size: 1.4rem;
+  margin-bottom: 16px;
+}
+
+/* 입력 폼: 두 줄(분류 선택 / 품목 입력) */
+#add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.row {
+  display: grid;
+  gap: 8px;
+}
+
+/* 1행: 대분류 / 소분류 */
+.row:first-child {
+  grid-template-columns: 1fr 2fr;
+}
+
+/* 2행: 품목은 넓게, 가격/수량/버튼은 좁게 */
+.row:last-child {
+  grid-template-columns: 2fr 1fr 0.7fr auto;
+}
+
+select {
+  padding: 10px;
+  border: 1px solid #d0d5da;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  background: #fff;
+  min-width: 0;
+}
+
+/* 네이버 추천 목록 */
+#suggestions {
+  border: 1px solid #d0d5da;
+  border-radius: 8px;
+  margin-top: 4px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.sug-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  border-bottom: 1px solid #f0f2f4;
+}
+
+.sug-item:last-child {
+  border-bottom: none;
+}
+
+.sug-item:hover {
+  background: #eff6ff;
+}
+
+.sug-name {
+  /* 긴 상품명은 말줄임표로 자름 */
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sug-price {
+  color: #2563eb;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sug-label {
+  font-size: 0.75rem;
+  color: #8a919a;
+  padding: 6px 12px 0;
+}
+
+.hint {
+  font-size: 0.8rem;
+  color: #8a919a;
+  margin-bottom: 16px;
+}
+
+/* 분류 제목 줄: 이름 왼쪽, 소계 오른쪽 */
+.group-heading {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 6px 8px;
+  border-radius: 6px;
+  margin-top: 10px;
+}
+
+input {
+  padding: 10px;
+  border: 1px solid #d0d5da;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  min-width: 0; /* grid 안에서 input이 넘치는 것 방지 */
+}
+
+button {
+  padding: 10px 14px;
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #1d4ed8;
+}
+
+#item-list {
+  list-style: none;
+  margin-bottom: 16px;
+}
+
+#item-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 4px;
+  border-bottom: 1px solid #eef0f2;
+}
+
+/* 체크된(구매 완료) 품목은 흐리게 + 취소선 */
+li.done .name {
+  text-decoration: line-through;
+  color: #9aa1a9;
+}
+
+.name {
+  flex: 1; /* 남는 공간을 이름이 차지 */
+}
+
+.price {
+  color: #555;
+  font-size: 0.9rem;
+}
+
+.del-btn {
+  background: transparent;
+  color: #c0392b;
+  padding: 4px 8px;
+  font-size: 1rem;
+}
+
+.del-btn:hover {
+  background: #fdecea;
+}
+
+.summary {
+  display: flex;
+  justify-content: space-between;
+  font-size: 1.1rem;
+  padding: 12px 4px;
+  border-top: 2px solid #333;
+}
+
+.clear {
+  width: 100%;
+  margin-top: 12px;
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.clear:hover {
+  background: #d1d5db;
+}
+
+/* ===== 상세/수정 모달 ===== */
+/* 배경을 어둡게 덮는 층. fixed라서 스크롤과 무관하게 화면 전체를 덮음 */
+#modal-backdrop {
+  position: fixed;
+  inset: 0; /* top/right/bottom/left 전부 0 */
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 16px;
+  z-index: 100;
+}
+
+#modal {
+  width: 100%;
+  max-width: 420px;
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  max-height: 85vh; /* 화면보다 커지면 내부 스크롤 */
+  overflow-y: auto;
+}
+
+#modal h2 {
+  font-size: 1.1rem;
+  margin-bottom: 14px;
+}
+
+#modal label {
+  display: block;
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin-bottom: 10px;
+}
+
+#modal label input,
+#modal label select {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+}
+
+/* 가격/수량을 한 줄에 나란히 */
+.edit-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 8px;
+}
+
+#edit-sugs {
+  margin: 6px 0 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.sug-loading,
+.sug-empty {
+  font-size: 0.85rem;
+  color: #8a919a;
+  padding: 10px 12px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.modal-actions button {
+  flex: 1;
+}
+
+button.secondary {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+button.secondary:hover {
+  background: #d1d5db;
+}
+
+button.danger {
+  background: #fdecea;
+  color: #c0392b;
+}
+
+button.danger:hover {
+  background: #fad7d2;
+}
+
+/* 목록의 품목 줄에 마우스 올리면 클릭 가능하다는 느낌 주기 */
+#item-list li {
+  cursor: pointer;
+}
+
+#item-list li:hover {
+  background: #f8fafc;
+}
