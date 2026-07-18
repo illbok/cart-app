@@ -439,15 +439,10 @@ li.done .name {
   border-top: 2px solid #333;
 }
 
-.clear {
-  width: 100%;
-  margin-top: 12px;
-  background: #e5e7eb;
-  color: #374151;
-}
-
-.clear:hover {
-  background: #d1d5db;
+/* 전체 선택 바 오른쪽: "구매 완료" / "전체 비우기" 버튼 묶음 */
+.bar-actions {
+  display: flex;
+  gap: 6px;
 }
 
 /* ===== 상세/수정 모달 ===== */

@@ -358,13 +358,18 @@ async function deleteItem(id) {
   render();
 }
 
-async function clearAll() {
-  // 전체 삭제는 되돌리기 어려운 작업이라 오프라인에서는 막아 둠
+// 전체 비우기: "전체 선택"이 켜져 있을 때만 버튼이 보이고,
+// DB 전체가 아니라 "선택된(=지금 보이는) 항목"만 지움.
+// 필터를 걸어 둔 상태라면 필터에 걸린 항목만 지워지므로 더 안전함.
+async function deleteSelected() {
+  const ids = [...selected];
+  if (ids.length === 0) return;
+  // 여러 개를 한 번에 지우는 되돌리기 어려운 작업이라 오프라인에서는 막아 둠
   if (isOffline()) return showError("전체 비우기는 인터넷 연결 후 가능해요");
-  // delete는 실수 방지를 위해 조건이 필수라서 "id가 null이 아닌 행" = 전부
-  const { error } = await sb.from("cart_items").delete().not("id", "is", null);
+  const { error } = await sb.from("cart_items").delete().in("id", ids);
   if (error) return showError("비우기에 실패했어요");
-  items = [];
+  selected.clear();
+  items = items.filter((x) => !ids.includes(x.id));
   render();
 }
 
@@ -814,7 +819,6 @@ function render() {
   tabHistory.classList.toggle("active", view === "history");
   form.hidden = view !== "cart";
   hintEl.hidden = view !== "cart";
-  clearBtn.hidden = view !== "cart";
 
   // 현재 필터에 맞는 항목만 (분류 필터와 중요도 필터는 동시에 적용 가능)
   const visible = visibleItems();
@@ -834,6 +838,10 @@ function render() {
   applyBtn.hidden = selected.size === 0;
   applyBtn.textContent =
     (view === "cart" ? "구매 완료" : "장바구니로 되돌리기") + ` (${selected.size})`;
+
+  // 전체 비우기 버튼: 장바구니 탭 + "전체 선택"이 켜져 있을 때만 표시 (실수 방지)
+  clearBtn.hidden = view !== "cart" || !checkAll.checked;
+  clearBtn.textContent = `전체 비우기 (${selected.size})`;
 
   if (visible.length === 0) {
     if (view === "history" && currentPool().length === 0) {
@@ -986,9 +994,11 @@ form.addEventListener("submit", (e) => {
   nameInput.focus();
 });
 
+// 전체 비우기: 버튼 자체가 "전체 선택" 상태에서만 보이지만,
+// 혹시 모를 상황(렌더 사이의 클릭)에 대비해 한 번 더 확인함
 clearBtn.addEventListener("click", () => {
-  if (items.length === 0) return;
-  clearAll();
+  if (!checkAll.checked || selected.size === 0) return;
+  deleteSelected();
 });
 
 // 전체 선택: 지금 보이는(탭+필터 통과) 품목 전부를 선택/해제 (처리는 버튼이 함)
