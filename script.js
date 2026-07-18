@@ -28,6 +28,8 @@ const errorBanner = document.getElementById("error-banner");
 const tabCart = document.getElementById("tab-cart");
 const tabHistory = document.getElementById("tab-history");
 const hintEl = document.querySelector(".hint");
+const selectAllBar = document.getElementById("select-all-bar");
+const checkAll = document.getElementById("check-all");
 
 function showError(msg) {
   errorBanner.textContent = msg;
@@ -130,6 +132,30 @@ async function clearAll() {
   if (error) return showError("비우기에 실패했어요");
   items = [];
   render();
+}
+
+// 여러 항목을 한 번의 요청으로 수정 (.in: id가 목록에 포함된 행 전부)
+async function bulkUpdate(ids, patch) {
+  if (ids.length === 0) return;
+  const { data, error } = await sb
+    .from("cart_items")
+    .update(patch)
+    .in("id", ids)
+    .select();
+  if (error) return showError("일괄 처리에 실패했어요");
+  data.forEach((row) => {
+    const i = items.findIndex((x) => x.id === row.id);
+    if (i !== -1) items[i] = row;
+  });
+  render();
+}
+
+// 구매완료/되돌리기 패치를 만들어 주는 도우미 (체크박스들이 공통으로 사용)
+function donePatch(checked) {
+  return {
+    done: checked,
+    purchased_at: checked ? new Date().toISOString() : null,
+  };
 }
 
 // ===== localStorage → Supabase 마이그레이션 =====
@@ -530,6 +556,15 @@ function dateLabel(iso) {
   return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
+// 현재 탭 + 필터를 모두 통과한 항목들
+function visibleItems() {
+  return currentPool().filter(
+    (x) =>
+      (filterCat === null || x.cat === filterCat) &&
+      (filterPri === null || x.priority === filterPri)
+  );
+}
+
 function render() {
   renderSidebar();
   list.innerHTML = "";
@@ -542,15 +577,14 @@ function render() {
   clearBtn.hidden = view !== "cart";
 
   // 현재 필터에 맞는 항목만 (분류 필터와 중요도 필터는 동시에 적용 가능)
-  const pool = currentPool();
-  const visible = pool.filter(
-    (x) =>
-      (filterCat === null || x.cat === filterCat) &&
-      (filterPri === null || x.priority === filterPri)
-  );
+  const visible = visibleItems();
+
+  // 전체 선택 바: 보이는 품목이 있을 때만 표시, "모두 체크됐는지" 상태 반영
+  selectAllBar.hidden = visible.length === 0;
+  checkAll.checked = visible.length > 0 && visible.every((x) => x.done);
 
   if (visible.length === 0) {
-    if (view === "history" && pool.length === 0) {
+    if (view === "history" && currentPool().length === 0) {
       list.innerHTML = '<p class="loading">아직 구매 기록이 없어요</p>';
     } else if (items.length > 0) {
       list.innerHTML = '<p class="loading">이 필터에 해당하는 품목이 없어요</p>';
@@ -579,7 +613,25 @@ function render() {
     const heading = document.createElement("div");
     heading.className = "group-heading";
     const subtotal = g.rows.reduce((sum, item) => sum + item.price * item.qty, 0);
-    heading.innerHTML = `<span>${g.label}</span><span>${subtotal.toLocaleString()}원</span>`;
+
+    // 분류(또는 날짜) 전체를 한 번에 체크/해제하는 체크박스
+    const gCheck = document.createElement("input");
+    gCheck.type = "checkbox";
+    gCheck.checked = g.rows.every((x) => x.done);
+    gCheck.addEventListener("change", () => {
+      bulkUpdate(g.rows.map((x) => x.id), donePatch(gCheck.checked));
+    });
+
+    const left = document.createElement("span");
+    left.className = "group-left";
+    const title = document.createElement("span");
+    title.textContent = g.label;
+    left.append(gCheck, title);
+
+    const right = document.createElement("span");
+    right.textContent = subtotal.toLocaleString() + "원";
+
+    heading.append(left, right);
     list.appendChild(heading);
 
     const ul = document.createElement("ul");
@@ -602,10 +654,7 @@ function render() {
       checkbox.addEventListener("change", () => {
         // 구매 완료: 구매 시각 기록 → 기록 탭으로 이동
         // 체크 해제: 시각 지우고 장바구니로 복귀
-        updateItem(item.id, {
-          done: checkbox.checked,
-          purchased_at: checkbox.checked ? new Date().toISOString() : null,
-        });
+        updateItem(item.id, donePatch(checkbox.checked));
       });
 
       // 중요도 배지 (색 + 라벨)
@@ -672,6 +721,11 @@ form.addEventListener("submit", (e) => {
 clearBtn.addEventListener("click", () => {
   if (items.length === 0) return;
   clearAll();
+});
+
+// 전체 선택: 지금 보이는(탭+필터 통과) 품목 전부를 한 번에 처리
+checkAll.addEventListener("change", () => {
+  bulkUpdate(visibleItems().map((x) => x.id), donePatch(checkAll.checked));
 });
 
 // 탭 전환

@@ -275,6 +275,28 @@ select {
   padding: 16px 4px;
 }
 
+/* 전체 선택 바 */
+#select-all-bar {
+  padding: 8px 4px 2px;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+#select-all-bar label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  width: fit-content;
+}
+
+/* 분류 제목 줄 왼쪽: 체크박스 + 이름 */
+.group-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* 분류 제목 줄: 이름 왼쪽, 소계 오른쪽 */
 .group-heading {
   display: flex;
