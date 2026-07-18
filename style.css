@@ -280,6 +280,10 @@ select {
   padding: 8px 4px 2px;
   font-size: 0.85rem;
   color: #6b7280;
+  /* 왼쪽 "전체 선택" / 오른쪽 "구매 완료" 버튼을 양 끝으로 배치 */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 #select-all-bar label {

@@ -12,6 +12,9 @@ let items = [];
 let filterCat = null; // null이면 전체
 let filterPri = null; // null이면 전체
 let view = "cart"; // "cart"(장바구니) | "history"(구매 기록)
+// 선택된 항목의 id 모음. DB에는 저장하지 않는 화면 전용 상태 —
+// 체크는 "고르기"만 하고, 실제 구매완료 처리는 버튼을 눌러야 실행됨.
+let selected = new Set();
 
 const form = document.getElementById("add-form");
 const catSelect = document.getElementById("cat-select");
@@ -30,6 +33,7 @@ const tabHistory = document.getElementById("tab-history");
 const hintEl = document.querySelector(".hint");
 const selectAllBar = document.getElementById("select-all-bar");
 const checkAll = document.getElementById("check-all");
+const applyBtn = document.getElementById("apply-selected");
 
 function showError(msg) {
   errorBanner.textContent = msg;
@@ -579,9 +583,21 @@ function render() {
   // 현재 필터에 맞는 항목만 (분류 필터와 중요도 필터는 동시에 적용 가능)
   const visible = visibleItems();
 
-  // 전체 선택 바: 보이는 품목이 있을 때만 표시, "모두 체크됐는지" 상태 반영
+  // 화면에 없는 항목이 몰래 처리되지 않게, 선택은 "지금 보이는 항목"으로만 유지
+  // (탭이나 필터를 바꾸면 가려진 항목은 선택에서 빠짐)
+  const visibleIds = new Set(visible.map((x) => x.id));
+  selected.forEach((id) => {
+    if (!visibleIds.has(id)) selected.delete(id);
+  });
+
+  // 전체 선택 바: 보이는 품목이 있을 때만 표시, "모두 선택됐는지" 상태 반영
   selectAllBar.hidden = visible.length === 0;
-  checkAll.checked = visible.length > 0 && visible.every((x) => x.done);
+  checkAll.checked = visible.length > 0 && visible.every((x) => selected.has(x.id));
+
+  // 처리 버튼: 선택된 게 있을 때만 보이고, 몇 개를 처리할지 개수 표시
+  applyBtn.hidden = selected.size === 0;
+  applyBtn.textContent =
+    (view === "cart" ? "구매 완료" : "장바구니로 되돌리기") + ` (${selected.size})`;
 
   if (visible.length === 0) {
     if (view === "history" && currentPool().length === 0) {
@@ -614,12 +630,15 @@ function render() {
     heading.className = "group-heading";
     const subtotal = g.rows.reduce((sum, item) => sum + item.price * item.qty, 0);
 
-    // 분류(또는 날짜) 전체를 한 번에 체크/해제하는 체크박스
+    // 분류(또는 날짜) 전체를 한 번에 선택/해제하는 체크박스 (선택만, 처리는 버튼)
     const gCheck = document.createElement("input");
     gCheck.type = "checkbox";
-    gCheck.checked = g.rows.every((x) => x.done);
+    gCheck.checked = g.rows.every((x) => selected.has(x.id));
     gCheck.addEventListener("change", () => {
-      bulkUpdate(g.rows.map((x) => x.id), donePatch(gCheck.checked));
+      g.rows.forEach((x) =>
+        gCheck.checked ? selected.add(x.id) : selected.delete(x.id)
+      );
+      render(); // 전체 선택 체크 상태와 버튼 개수를 다시 계산
     });
 
     const left = document.createElement("span");
@@ -649,12 +668,13 @@ function render() {
 
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
-      checkbox.checked = item.done;
+      checkbox.checked = selected.has(item.id);
       checkbox.addEventListener("click", (e) => e.stopPropagation());
       checkbox.addEventListener("change", () => {
-        // 구매 완료: 구매 시각 기록 → 기록 탭으로 이동
-        // 체크 해제: 시각 지우고 장바구니로 복귀
-        updateItem(item.id, donePatch(checkbox.checked));
+        // 체크 = 선택만. 실제 구매완료/되돌리기는 위의 버튼이 실행
+        if (checkbox.checked) selected.add(item.id);
+        else selected.delete(item.id);
+        render();
       });
 
       // 중요도 배지 (색 + 라벨)
@@ -723,18 +743,30 @@ clearBtn.addEventListener("click", () => {
   clearAll();
 });
 
-// 전체 선택: 지금 보이는(탭+필터 통과) 품목 전부를 한 번에 처리
+// 전체 선택: 지금 보이는(탭+필터 통과) 품목 전부를 선택/해제 (처리는 버튼이 함)
 checkAll.addEventListener("change", () => {
-  bulkUpdate(visibleItems().map((x) => x.id), donePatch(checkAll.checked));
+  visibleItems().forEach((x) =>
+    checkAll.checked ? selected.add(x.id) : selected.delete(x.id)
+  );
+  render();
 });
 
-// 탭 전환
+// 구매 완료(장바구니) / 되돌리기(기록) 버튼: 선택된 항목을 한 번에 실제 처리
+applyBtn.addEventListener("click", () => {
+  const ids = [...selected]; // Set → 배열
+  selected.clear(); // 처리 후에는 선택 초기화
+  bulkUpdate(ids, donePatch(view === "cart"));
+});
+
+// 탭 전환 (탭을 바꾸면 선택도 초기화)
 tabCart.addEventListener("click", () => {
   view = "cart";
+  selected.clear();
   render();
 });
 tabHistory.addEventListener("click", () => {
   view = "history";
+  selected.clear();
   render();
 });
 
