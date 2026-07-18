@@ -1,39 +1,26 @@
-# 🛒 장바구니 (cart-app)
+# 장바구니 앱 (cart-app)
 
-장보기 목록을 관리하는 웹앱. 첫 웹 개발 프로젝트.
+바닐라 HTML/CSS/JS + Vercel 서버리스 함수 + Supabase로 만든 장바구니 웹앱.
 
-**배포 주소**: https://cart-app-livid-eta.vercel.app
+배포 주소: https://cart-app-livid-eta.vercel.app
 
-## 기능
+## 기능 (v6)
+- 품목 추가/수정/삭제, 구매 완료 체크, 분류별 그룹 + 소계
+- 대분류 5개 → 소분류 42개 자동 입력
+- 네이버 쇼핑 최저가 추천 (입력 디바운스, 서버 캐시 1시간)
+- 상세/수정 모달
+- **Supabase 저장** — 기기 간 동기화 (로그인 없는 공유 리스트)
+- **쇼핑 중요도 5단계** — Must Buy / High / Normal / Low / Wish List
+- **사이드바** — 분류·중요도 필터 + PC에서 드래그로 분류/중요도 변경
+- 기존 localStorage 데이터는 첫 접속 때 자동으로 Supabase로 이전됨
 
-- 품목/가격/수량 추가, 구매 완료 체크, 삭제, 합계 자동 계산
-- 대분류 → 소분류 선택 시 품목명·평균 가격 자동 입력 (내장 가격표 42종)
-- 품목 입력 시 네이버 쇼핑 최저가 추천 5개 (서버리스 함수 프록시)
-- 품목 클릭 → 상세 모달에서 분류/품목명/가격/수량 수정 + 추천 가격 반영
-- localStorage로 데이터 유지 (새로고침해도 목록 보존)
+## 구조
+- `index.html` / `style.css` / `data.js`(분류·가격·중요도 데이터) / `script.js`(로직)
+- `api/search.js` — 네이버 쇼핑 API 프록시 (서버리스 함수)
 
-## 기술 스택
+## 환경변수 (Vercel 프로젝트 설정에 등록)
+- `NAVER_CLIENT_ID`
+- `NAVER_CLIENT_SECRET`
 
-- 프론트엔드: 바닐라 HTML / CSS / JavaScript
-- 백엔드: Vercel Serverless Function (`api/search.js`)
-- 외부 API: 네이버 쇼핑 검색 API
-- 배포: Vercel
-
-## 파일 구조
-
-```
-index.html      화면 구조 (추가 폼, 목록, 상세 모달)
-style.css       스타일
-script.js       동작 로직 (데이터 → render 패턴)
-data.js         분류/평균가격 데이터
-api/search.js   네이버 쇼핑 검색 프록시 (서버리스)
-```
-
-## 환경변수 (Vercel > Settings > Environment Variables)
-
-| 이름 | 설명 |
-|------|------|
-| `NAVER_CLIENT_ID` | 네이버 개발자센터 애플리케이션 Client ID |
-| `NAVER_CLIENT_SECRET` | 네이버 개발자센터 애플리케이션 Client Secret |
-
-네이버 개발자센터 앱의 "사용 API"에 **검색**이 추가되어 있어야 함.
+Supabase URL/publishable key는 브라우저 노출이 허용되는 값이라 script.js에 직접 적음.
+실제 권한은 DB의 RLS 정책으로 관리.

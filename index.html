@@ -7,39 +7,60 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <main class="container">
-    <h1>🛒 장바구니</h1>
+  <!-- layout: 왼쪽 사이드바 + 오른쪽 본문 (모바일에서는 위/아래로 쌓임) -->
+  <div class="layout">
 
-    <form id="add-form">
-      <!-- 1행: 분류 선택. 소분류를 고르면 아래 품목/가격이 자동 입력됨 -->
-      <div class="row">
-        <select id="cat-select"></select>
-        <select id="sub-select"></select>
+    <!-- 사이드바: 필터 + 드래그 놓는 곳. 내용은 JS가 채움 -->
+    <aside class="sidebar">
+      <div class="side-section">
+        <div class="side-title">분류</div>
+        <div id="side-cats"></div>
       </div>
-      <!-- 2행: 자동 입력된 값을 그대로 쓰거나 직접 수정 -->
-      <div class="row">
-        <input type="text" id="item-name" placeholder="품목 (직접 입력 가능)" required />
-        <input type="number" id="item-price" placeholder="가격" min="0" required />
-        <input type="number" id="item-qty" placeholder="수량" min="1" value="1" required />
-        <button type="submit">추가</button>
+      <div class="side-section">
+        <div class="side-title">중요도</div>
+        <div id="side-pris"></div>
       </div>
-    </form>
+      <p class="side-hint">PC에서는 품목을 끌어다 분류/중요도 위에 놓으면 이동됩니다</p>
+    </aside>
 
-    <!-- 품목 입력 시 네이버 쇼핑 추천이 여기에 표시됨 -->
-    <div id="suggestions" hidden></div>
+    <main class="container">
+      <h1>🛒 장바구니</h1>
 
-    <p class="hint">※ 추천 가격은 네이버 쇼핑 최저가 기준이며 실제 구매가와 다를 수 있습니다. 품목을 누르면 수정할 수 있어요.</p>
+      <form id="add-form">
+        <!-- 1행: 대분류 / 소분류 / 중요도 -->
+        <div class="row row-selects">
+          <select id="cat-select"></select>
+          <select id="sub-select"></select>
+          <select id="pri-select"></select>
+        </div>
+        <!-- 2행: 자동 입력된 값을 그대로 쓰거나 직접 수정 -->
+        <div class="row row-inputs">
+          <input type="text" id="item-name" placeholder="품목 (직접 입력 가능)" required autocomplete="off" />
+          <input type="number" id="item-price" placeholder="가격" min="0" required />
+          <input type="number" id="item-qty" placeholder="수량" min="1" value="1" required />
+          <button type="submit">추가</button>
+        </div>
+      </form>
 
-    <!-- JS가 여기에 분류별로 목록을 그려 넣음 -->
-    <div id="item-list"></div>
+      <!-- 품목 입력 시 네이버 쇼핑 추천이 여기에 표시됨 -->
+      <div id="suggestions" hidden></div>
 
-    <div class="summary">
-      <span>합계</span>
-      <strong id="total">0원</strong>
-    </div>
+      <p class="hint">※ 추천 가격은 네이버 쇼핑 최저가 기준이며 실제 구매가와 다를 수 있습니다. 품목을 누르면 수정할 수 있어요.</p>
 
-    <button id="clear-btn" class="clear">전체 비우기</button>
-  </main>
+      <!-- 저장/불러오기 실패 시 안내 배너 -->
+      <div id="error-banner" hidden></div>
+
+      <!-- JS가 여기에 분류별로 목록을 그려 넣음 -->
+      <div id="item-list"><p class="loading">불러오는 중…</p></div>
+
+      <div class="summary">
+        <span id="total-label">합계</span>
+        <strong id="total">0원</strong>
+      </div>
+
+      <button id="clear-btn" class="clear">전체 비우기</button>
+    </main>
+  </div>
 
   <!-- 상세/수정 모달: 평소엔 숨겨져 있다가 품목을 클릭하면 표시됨 -->
   <div id="modal-backdrop" hidden>
@@ -48,6 +69,9 @@
 
       <label>분류
         <select id="edit-cat"></select>
+      </label>
+      <label>중요도
+        <select id="edit-pri"></select>
       </label>
       <label>품목명
         <input type="text" id="edit-name" />
@@ -72,6 +96,8 @@
     </div>
   </div>
 
+  <!-- Supabase 클라이언트 라이브러리 (CDN). script.js보다 먼저 불러야 함 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <!-- data.js를 먼저 불러와야 script.js에서 CATEGORIES를 쓸 수 있음 (순서 중요) -->
   <script src="data.js"></script>
   <script src="script.js"></script>
