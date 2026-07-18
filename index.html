@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>장바구니</title>
   <link rel="stylesheet" href="style.css" />
+  <!-- PWA: 홈 화면에 설치할 때 쓰는 앱 정보(이름/아이콘/색) -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#2563eb" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
 </head>
 <body>
   <!-- layout: 왼쪽 사이드바 + 오른쪽 본문 (모바일에서는 위/아래로 쌓임) -->
@@ -55,6 +59,9 @@
 
       <!-- 저장/불러오기 실패 시 안내 배너 -->
       <div id="error-banner" hidden></div>
+
+      <!-- 오프라인일 때 계속 떠 있는 안내 배너 -->
+      <div id="offline-banner" hidden>📡 오프라인 — 저장해 둔 목록을 보여주는 중이에요. 변경은 인터넷 연결 후 가능합니다</div>
 
       <!-- 전체 선택: 체크박스로 고르기만 하고, 오른쪽 버튼을 눌러야 실제 처리됨 -->
       <div id="select-all-bar" hidden>

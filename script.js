@@ -3,7 +3,9 @@
 // 실제 권한은 DB의 RLS 정책이 결정함.
 const SUPABASE_URL = "https://czkdfopmbfdlxtegwgav.supabase.co";
 const SUPABASE_KEY = "sb_publishable_YTFDp9WweP3alI-71yE4rg_UMbpQFMS";
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// 오프라인 첫 방문 등으로 CDN 라이브러리를 못 불러왔으면 sb는 null —
+// 이 경우에도 아래 코드가 죽지 않고 "캐시 보기 전용"으로 동작해야 함
+const sb = window.supabase ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
 // ===== 상태 =====
 // item 구조: { id, name, price, qty, done, cat, priority, created_at }
@@ -39,6 +41,35 @@ function showError(msg) {
   errorBanner.textContent = msg;
   errorBanner.hidden = false;
   setTimeout(() => (errorBanner.hidden = true), 4000);
+}
+
+// ===== 오프라인 지원 =====
+// 전략: 목록을 항상 localStorage에 복사해 둠(캐시).
+// 오프라인이면 캐시를 보여주기만 하고, 변경(추가/수정/삭제)은 막음.
+const offlineBanner = document.getElementById("offline-banner");
+const CACHE_KEY = "cart-cache";
+
+// navigator.onLine: 브라우저가 알려주는 현재 연결 상태
+function isOffline() {
+  return !navigator.onLine || !sb;
+}
+
+function updateOfflineBanner() {
+  offlineBanner.hidden = !isOffline();
+}
+
+function saveCache() {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(items));
+  } catch {} // 저장 실패(용량 초과 등)해도 앱은 계속 동작
+}
+
+function loadCache() {
+  try {
+    items = JSON.parse(localStorage.getItem(CACHE_KEY)) || [];
+  } catch {
+    items = [];
+  }
 }
 
 // ===== 품목명 요약 (규칙 기반) =====
@@ -89,6 +120,7 @@ function summarizeName(title) {
 // async/await: DB 요청은 시간이 걸리므로 응답을 기다렸다가 다음 줄을 실행
 
 async function loadItems() {
+  if (isOffline()) return updateOfflineBanner(); // 캐시 화면 유지
   const { data, error } = await sb
     .from("cart_items")
     .select("*")
@@ -99,6 +131,7 @@ async function loadItems() {
 }
 
 async function addItem(fields) {
+  if (isOffline()) return showError("오프라인 상태라 지금은 추가할 수 없어요");
   // insert 후 .select().single(): 방금 넣은 행(id 포함)을 돌려받음
   const { data, error } = await sb
     .from("cart_items")
@@ -111,6 +144,7 @@ async function addItem(fields) {
 }
 
 async function updateItem(id, patch) {
+  if (isOffline()) return showError("오프라인 상태라 지금은 수정할 수 없어요");
   const { data, error } = await sb
     .from("cart_items")
     .update(patch)
@@ -124,6 +158,7 @@ async function updateItem(id, patch) {
 }
 
 async function deleteItem(id) {
+  if (isOffline()) return showError("오프라인 상태라 지금은 삭제할 수 없어요");
   const { error } = await sb.from("cart_items").delete().eq("id", id);
   if (error) return showError("삭제에 실패했어요");
   items = items.filter((x) => x.id !== id);
@@ -131,6 +166,7 @@ async function deleteItem(id) {
 }
 
 async function clearAll() {
+  if (isOffline()) return showError("오프라인 상태라 지금은 비울 수 없어요");
   // delete는 실수 방지를 위해 조건이 필수라서 "id가 null이 아닌 행" = 전부
   const { error } = await sb.from("cart_items").delete().not("id", "is", null);
   if (error) return showError("비우기에 실패했어요");
@@ -140,6 +176,7 @@ async function clearAll() {
 
 // 여러 항목을 한 번의 요청으로 수정 (.in: id가 목록에 포함된 행 전부)
 async function bulkUpdate(ids, patch) {
+  if (isOffline()) return showError("오프라인 상태라 지금은 변경할 수 없어요");
   if (ids.length === 0) return;
   const { data, error } = await sb
     .from("cart_items")
@@ -570,6 +607,7 @@ function visibleItems() {
 }
 
 function render() {
+  saveCache(); // 화면을 그릴 때마다 현재 목록을 기기에 저장 (오프라인 대비)
   renderSidebar();
   list.innerHTML = "";
 
@@ -775,11 +813,31 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden) loadItems();
 });
 
+// 연결 상태가 바뀔 때: 배너 갱신, 다시 연결되면 서버에서 최신 목록을 받아옴
+window.addEventListener("online", () => {
+  updateOfflineBanner();
+  loadItems();
+});
+window.addEventListener("offline", updateOfflineBanner);
+
 // ===== 시작 =====
 async function init() {
   fillSubOptions();
-  renderSidebar();
-  await migrateLocal(); // 예전 localStorage 데이터가 있으면 먼저 올리고
-  await loadItems(); // DB에서 전체 목록 불러오기
+
+  // 1) 기기에 저장된 캐시를 먼저 그림 → 인터넷 없어도, 느려도 목록이 바로 보임
+  loadCache();
+  render();
+  updateOfflineBanner();
+
+  // 2) 서비스 워커 등록 (앱 파일 캐시 담당. https 배포 주소에서만 동작)
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+
+  // 3) 온라인이면 서버에서 최신 목록으로 갱신
+  if (!isOffline()) {
+    await migrateLocal(); // 예전 localStorage 데이터가 있으면 먼저 올리고
+    await loadItems(); // DB에서 전체 목록 불러오기
+  }
 }
 init();

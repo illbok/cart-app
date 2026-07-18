@@ -269,6 +269,16 @@ select {
   margin-bottom: 10px;
 }
 
+/* 오프라인 안내 (에러와 달리 사라지지 않고 연결될 때까지 유지) */
+#offline-banner {
+  background: #fef9c3;
+  color: #854d0e;
+  font-size: 0.85rem;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
 .loading {
   color: #8a919a;
   font-size: 0.9rem;
