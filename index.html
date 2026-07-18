@@ -26,6 +26,12 @@
     <main class="container">
       <h1>🛒 장바구니</h1>
 
+      <!-- 화면 전환 탭: 장바구니 / 구매 기록 -->
+      <div class="tabs">
+        <button type="button" id="tab-cart" class="tab active">장바구니</button>
+        <button type="button" id="tab-history" class="tab">구매 기록</button>
+      </div>
+
       <form id="add-form">
         <!-- 1행: 대분류 / 소분류 / 중요도 -->
         <div class="row row-selects">
@@ -74,7 +80,11 @@
         <select id="edit-pri"></select>
       </label>
       <label>품목명
-        <input type="text" id="edit-name" />
+        <div class="name-row">
+          <input type="text" id="edit-name" />
+          <!-- 긴 상품명을 규칙 기반으로 줄여 줌 -->
+          <button type="button" id="edit-summarize" class="secondary small">요약</button>
+        </div>
       </label>
       <div class="edit-row">
         <label>가격

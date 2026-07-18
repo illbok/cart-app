@@ -142,6 +142,38 @@ h1 {
   margin-bottom: 16px;
 }
 
+/* hidden 속성이 붙으면 우리 display 설정보다 우선해서 무조건 숨김 */
+[hidden] {
+  display: none !important;
+}
+
+/* 화면 전환 탭 (장바구니 / 구매 기록) */
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.tab {
+  flex: 1;
+  background: #eef0f2;
+  color: #6b7280;
+  font-weight: 700;
+}
+
+.tab:hover {
+  background: #e2e5e9;
+}
+
+.tab.active {
+  background: #2563eb;
+  color: #fff;
+}
+
+.tab.active:hover {
+  background: #1d4ed8;
+}
+
 /* 입력 폼: 두 줄(분류/중요도 선택 / 품목 입력) */
 #add-form {
   display: flex;
@@ -410,6 +442,25 @@ li.done .name {
   display: block;
   width: 100%;
   margin-top: 4px;
+}
+
+/* 품목명 입력 + 요약 버튼을 한 줄에 */
+.name-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.name-row input {
+  flex: 1;
+  margin-top: 0 !important;
+}
+
+button.small {
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* 가격/수량을 한 줄에 나란히 */
