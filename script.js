@@ -72,6 +72,178 @@ function loadCache() {
   }
 }
 
+// ===== 오프라인 변경 큐 =====
+// 오프라인에서 한 변경(추가/수정/삭제)을 기기에 줄 세워 두고,
+// 다시 연결되면 순서대로 서버에 보냄(동기화).
+// 큐에 들어가는 작업(op) 3종:
+//   { kind: "add",    row }            — 새 행 전체 (id도 미리 만들어 둠)
+//   { kind: "update", id, patch, ts }  — 어떤 행을 어떻게 고칠지 + 고친 시각
+//   { kind: "delete", id, ts }
+const QUEUE_KEY = "cart-queue";
+let queue = [];
+
+function loadQueue() {
+  try {
+    queue = JSON.parse(localStorage.getItem(QUEUE_KEY)) || [];
+  } catch {
+    queue = [];
+  }
+}
+
+function saveQueue() {
+  try {
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+  } catch {}
+}
+
+// id(uuid)를 클라이언트가 직접 생성 — DB가 만들어 주길 기다릴 필요가 없어
+// 오프라인에서도 "진짜 id"를 가진 항목을 만들 수 있음.
+// 같은 id를 두 번 insert하면 DB가 거부하므로, 재전송이 겹쳐도 중복 저장이 안 됨.
+function newId() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  // 아주 오래된 브라우저용 대체 (uuid v4 형식 흉내)
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
+// 초록색 안내 배너 (에러 배너를 색만 바꿔 재사용)
+function showNotice(msg) {
+  errorBanner.textContent = msg;
+  errorBanner.classList.add("notice");
+  errorBanner.hidden = false;
+  setTimeout(() => {
+    errorBanner.hidden = true;
+    errorBanner.classList.remove("notice");
+  }, 4000);
+}
+
+// 오프라인 수정: 큐에 넣고 화면에는 바로 반영
+function queueUpdate(id, patch) {
+  const ts = new Date().toISOString();
+  // 아직 서버에 안 올라간 "추가" 항목을 고치는 거면, 큐의 add에 합쳐 버림
+  const addOp = queue.find((op) => op.kind === "add" && op.row.id === id);
+  if (addOp) {
+    Object.assign(addOp.row, patch, { updated_at: ts });
+  } else {
+    // 같은 항목을 여러 번 고치면 op을 하나로 합침 (마지막 상태만 보내면 됨)
+    const upOp = queue.find((op) => op.kind === "update" && op.id === id);
+    if (upOp) {
+      Object.assign(upOp.patch, patch);
+      upOp.ts = ts;
+    } else {
+      queue.push({ kind: "update", id, patch: { ...patch }, ts });
+    }
+  }
+  saveQueue();
+  const i = items.findIndex((x) => x.id === id);
+  if (i !== -1) items[i] = { ...items[i], ...patch, updated_at: ts, pending: true };
+}
+
+// 오프라인 삭제: 아직 서버에 없는 항목이면 큐에서 빼기만 하면 끝
+function queueDelete(id) {
+  const wasLocalAdd = queue.some((op) => op.kind === "add" && op.row.id === id);
+  queue = queue.filter(
+    (op) =>
+      !(op.kind === "add" && op.row.id === id) &&
+      !(op.kind === "update" && op.id === id)
+  );
+  if (!wasLocalAdd) queue.push({ kind: "delete", id, ts: new Date().toISOString() });
+  saveQueue();
+  items = items.filter((x) => x.id !== id);
+}
+
+// 서버에서 받은 목록 위에 "아직 안 보낸 변경"을 겹쳐 그림
+// (큐가 남아 있는 동안 새로고침해도 내 변경이 사라져 보이지 않게)
+function applyQueue(rows) {
+  let out = rows.slice();
+  queue.forEach((op) => {
+    if (op.kind === "add" && !out.some((x) => x.id === op.row.id)) {
+      out.push({ ...op.row, pending: true });
+    } else if (op.kind === "update") {
+      const i = out.findIndex((x) => x.id === op.id);
+      if (i !== -1) out[i] = { ...out[i], ...op.patch, pending: true };
+    } else if (op.kind === "delete") {
+      out = out.filter((x) => x.id !== op.id);
+    }
+  });
+  return out;
+}
+
+// ===== 재접속 동기화 =====
+// 큐를 앞에서부터 하나씩 서버로 보냄. 충돌 규칙(last-write-wins):
+// "더 나중에 고친 쪽이 이긴다" — 각 op의 ts와 서버의 updated_at을 비교해서
+// 서버가 더 최신이면 내 변경은 버리고 서버 내용을 따름.
+let flushing = false;
+
+async function flushQueue() {
+  if (flushing || isOffline() || queue.length === 0) return;
+  flushing = true;
+  let sent = 0;      // 서버에 반영된 op 수
+  let conflicts = 0; // 서버가 더 최신이라 버려진 op 수
+  try {
+    while (queue.length > 0 && !isOffline()) {
+      const op = queue[0];
+
+      if (op.kind === "add") {
+        const { error } = await sb.from("cart_items").insert(op.row);
+        // 23505 = 이미 같은 id가 있음(지난 전송이 사실은 성공했던 경우) → 성공 취급
+        if (error && error.code !== "23505") {
+          if (!error.code) break; // code 없는 에러 = 네트워크 문제 → 큐 유지, 다음에 재시도
+          showError("저장하지 못한 항목이 있어요: " + op.row.name);
+        }
+      } else if (op.kind === "update") {
+        // .lte("updated_at", op.ts): 서버 행이 내 수정 시각보다 예전일 때만 반영.
+        // 다른 기기가 그 사이 더 최근에 고쳤으면 0행 매치 → 내 수정은 버려짐(충돌)
+        const { data, error } = await sb
+          .from("cart_items")
+          .update({ ...op.patch, updated_at: op.ts })
+          .eq("id", op.id)
+          .lte("updated_at", op.ts)
+          .select();
+        if (error) {
+          if (!error.code) break;
+          showError("수정을 반영하지 못한 항목이 있어요");
+        } else if (data.length === 0) conflicts++;
+      } else if (op.kind === "delete") {
+        const { data, error } = await sb
+          .from("cart_items")
+          .delete()
+          .eq("id", op.id)
+          .lte("updated_at", op.ts)
+          .select();
+        if (error) {
+          if (!error.code) break;
+        } else if (data.length === 0) {
+          // 못 지웠음: 이미 없어진 행(문제 없음)이거나, 다른 기기가 최근에 고친 행(충돌)
+          const { data: still } = await sb
+            .from("cart_items")
+            .select("id")
+            .eq("id", op.id);
+          if (still && still.length > 0) conflicts++;
+        }
+      }
+
+      queue.shift(); // 처리 끝난 op 제거
+      saveQueue();
+      sent++;
+    }
+  } catch {
+    // 전송 중 연결이 끊기면 남은 큐는 다음 재연결 때 이어서 보냄
+  }
+  flushing = false;
+
+  if (sent > 0) {
+    await fetchItems(); // 서버 기준 최신 목록으로 갱신
+    if (conflicts > 0) {
+      showNotice(`다른 기기에서 더 최근에 바뀐 ${conflicts}건은 서버 내용을 따랐어요`);
+    } else {
+      showNotice(`오프라인 변경 ${sent}건을 서버에 반영했어요`);
+    }
+  }
+}
+
 // ===== 품목명 요약 (규칙 기반) =====
 // 네이버 상품명은 "[특가] 브랜드 상품 1L x 10팩 당일발송" 처럼 길어서
 // 광고 문구를 제거하고 핵심(브랜드/상품/용량)만 남김
@@ -119,19 +291,33 @@ function summarizeName(title) {
 // ===== DB 함수 =====
 // async/await: DB 요청은 시간이 걸리므로 응답을 기다렸다가 다음 줄을 실행
 
-async function loadItems() {
-  if (isOffline()) return updateOfflineBanner(); // 캐시 화면 유지
+// 서버에서 목록을 받아와, 아직 못 보낸 큐 내용을 겹쳐서 그림
+async function fetchItems() {
   const { data, error } = await sb
     .from("cart_items")
     .select("*")
     .order("created_at"); // 추가한 순서대로
   if (error) return showError("목록을 불러오지 못했어요");
-  items = data;
+  items = applyQueue(data);
   render();
 }
 
+async function loadItems() {
+  if (isOffline()) return updateOfflineBanner(); // 캐시 화면 유지
+  if (queue.length > 0) return flushQueue(); // 밀린 변경 먼저 보내고, 끝나면 fetchItems 호출됨
+  await fetchItems();
+}
+
 async function addItem(fields) {
-  if (isOffline()) return showError("오프라인 상태라 지금은 추가할 수 없어요");
+  if (isOffline()) {
+    // 오프라인: id를 여기서 만들어 큐에 넣고, 화면에는 바로 추가
+    const now = new Date().toISOString();
+    const row = { id: newId(), ...fields, created_at: now, updated_at: now };
+    queue.push({ kind: "add", row });
+    saveQueue();
+    items.push({ ...row, pending: true });
+    return render();
+  }
   // insert 후 .select().single(): 방금 넣은 행(id 포함)을 돌려받음
   const { data, error } = await sb
     .from("cart_items")
@@ -144,10 +330,14 @@ async function addItem(fields) {
 }
 
 async function updateItem(id, patch) {
-  if (isOffline()) return showError("오프라인 상태라 지금은 수정할 수 없어요");
+  if (isOffline()) {
+    queueUpdate(id, patch);
+    return render();
+  }
+  // 온라인 수정에도 updated_at을 남김 — 충돌 판정(누가 더 최신인가)의 기준이 됨
   const { data, error } = await sb
     .from("cart_items")
-    .update(patch)
+    .update({ ...patch, updated_at: new Date().toISOString() })
     .eq("id", id) // id가 일치하는 행만
     .select()
     .single();
@@ -158,7 +348,10 @@ async function updateItem(id, patch) {
 }
 
 async function deleteItem(id) {
-  if (isOffline()) return showError("오프라인 상태라 지금은 삭제할 수 없어요");
+  if (isOffline()) {
+    queueDelete(id);
+    return render();
+  }
   const { error } = await sb.from("cart_items").delete().eq("id", id);
   if (error) return showError("삭제에 실패했어요");
   items = items.filter((x) => x.id !== id);
@@ -166,7 +359,8 @@ async function deleteItem(id) {
 }
 
 async function clearAll() {
-  if (isOffline()) return showError("오프라인 상태라 지금은 비울 수 없어요");
+  // 전체 삭제는 되돌리기 어려운 작업이라 오프라인에서는 막아 둠
+  if (isOffline()) return showError("전체 비우기는 인터넷 연결 후 가능해요");
   // delete는 실수 방지를 위해 조건이 필수라서 "id가 null이 아닌 행" = 전부
   const { error } = await sb.from("cart_items").delete().not("id", "is", null);
   if (error) return showError("비우기에 실패했어요");
@@ -176,11 +370,15 @@ async function clearAll() {
 
 // 여러 항목을 한 번의 요청으로 수정 (.in: id가 목록에 포함된 행 전부)
 async function bulkUpdate(ids, patch) {
-  if (isOffline()) return showError("오프라인 상태라 지금은 변경할 수 없어요");
   if (ids.length === 0) return;
+  if (isOffline()) {
+    // 여러 항목도 결국 "항목별 수정"의 묶음 — 한 개씩 큐에 넣음
+    ids.forEach((id) => queueUpdate(id, patch));
+    return render();
+  }
   const { data, error } = await sb
     .from("cart_items")
-    .update(patch)
+    .update({ ...patch, updated_at: new Date().toISOString() })
     .in("id", ids)
     .select();
   if (error) return showError("일괄 처리에 실패했어요");
@@ -726,6 +924,16 @@ function render() {
       name.className = "name";
       name.textContent = `${item.name} × ${item.qty}`;
 
+      // 아직 서버에 안 올라간(큐 대기 중) 항목이면 ⏳ 표시
+      let pendingTag = null;
+      if (item.pending) {
+        li.classList.add("pending");
+        pendingTag = document.createElement("span");
+        pendingTag.className = "pending-tag";
+        pendingTag.textContent = "⏳";
+        pendingTag.title = "연결되면 자동 저장돼요";
+      }
+
       const price = document.createElement("span");
       price.className = "price";
       price.textContent = (item.price * item.qty).toLocaleString() + "원";
@@ -740,7 +948,9 @@ function render() {
 
       li.addEventListener("click", () => openDetail(item.id));
 
-      li.append(checkbox, badge, name, price, delBtn);
+      li.append(checkbox, badge, name);
+      if (pendingTag) li.append(pendingTag);
+      li.append(price, delBtn);
       ul.appendChild(li);
     });
 
@@ -813,7 +1023,8 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden) loadItems();
 });
 
-// 연결 상태가 바뀔 때: 배너 갱신, 다시 연결되면 서버에서 최신 목록을 받아옴
+// 연결 상태가 바뀔 때: 배너 갱신, 다시 연결되면
+// 밀린 변경(큐)을 먼저 서버에 보내고 최신 목록을 받아옴 (loadItems가 알아서 함)
 window.addEventListener("online", () => {
   updateOfflineBanner();
   loadItems();
@@ -824,8 +1035,10 @@ window.addEventListener("offline", updateOfflineBanner);
 async function init() {
   fillSubOptions();
 
-  // 1) 기기에 저장된 캐시를 먼저 그림 → 인터넷 없어도, 느려도 목록이 바로 보임
+  // 1) 기기에 저장된 캐시 + 못 보낸 변경 큐를 불러와 먼저 그림
+  //    → 인터넷 없어도, 느려도 목록이 바로 보임
   loadCache();
+  loadQueue();
   render();
   updateOfflineBanner();
 
