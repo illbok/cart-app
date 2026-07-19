@@ -4,7 +4,7 @@
 
 // 캐시 이름에 버전을 붙임 — 파일을 크게 바꿀 때 v2, v3...으로 올리면
 // activate에서 옛 캐시가 삭제되면서 깨끗하게 갈아탈 수 있음
-const CACHE = "cart-app-v6";
+const CACHE = "cart-app-v7";
 
 // 미리 캐시해 둘 "앱 껍데기" 파일들
 const ASSETS = [

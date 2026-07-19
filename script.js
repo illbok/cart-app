@@ -282,6 +282,7 @@ async function fetchItems() {
   if (error) return showError("목록을 불러오지 못했어요");
   items = applyQueue(data);
   render();
+  maybeNoticeStale(); // 데이터 로드 후 오래된 기록 감지(1회 안내)
 }
 async function loadItems() {
   if (isOffline()) return updateOfflineBanner();
@@ -350,6 +351,40 @@ async function bulkUpdate(ids, patch) {
 }
 function donePatch(checked) {
   return { done: checked, purchased_at: checked ? new Date().toISOString() : null };
+}
+
+// ===== 구매완료(기록) 30일 정리 =====
+// 하이브리드: 앱 열 때 오래된 기록을 "감지만" 하고, 사용자가 "정리"를 눌러
+// 확인해야 실제 삭제(DB 영구삭제·전 기기 반영). 온라인 전용.
+const STALE_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+// 구매완료(done)이고 purchased_at이 30일보다 오래됐나
+function isStale(it) {
+  if (!it.done || !it.purchased_at) return false;
+  const t = new Date(it.purchased_at).getTime();
+  if (isNaN(t)) return false;
+  return Date.now() - t > STALE_DAYS * DAY_MS;
+}
+function staleHistory() { return items.filter(isStale); }
+// 30일 지난 기록을 DB에서 한 번에(.in) 영구삭제
+async function deleteStaleHistory() {
+  const ids = staleHistory().map((x) => x.id);
+  if (ids.length === 0) return;
+  if (isOffline()) return showError("오래된 기록 정리는 인터넷 연결 후 가능해요");
+  const { error } = await sb.from("cart_items").delete().in("id", ids);
+  if (error) return showError("정리에 실패했어요");
+  items = items.filter((x) => !ids.includes(x.id));
+  render();
+  showNotice(`오래된 기록 ${ids.length}건을 정리했어요`);
+}
+// 앱을 연 세션에서 한 번만: 오래된 기록이 있으면 안내(삭제는 사용자 확인)
+let staleNoticed = false;
+function maybeNoticeStale() {
+  if (staleNoticed) return;
+  const n = staleHistory().length;
+  if (n === 0) return;
+  staleNoticed = true;
+  showNotice(`30일 지난 구매 기록 ${n}건이 있어요. 기록 탭에서 정리할 수 있어요`);
 }
 async function migrateLocal() {
   let old;
@@ -487,6 +522,21 @@ function renderHeader(isCart, pool, total) {
     const card = el("div", "hist-card");
     card.append(el("div", "hist-card-label", "누적 지출"), el("div", "hist-card-total", money(histTotal)));
     appHeader.append(card);
+
+    // 30일 지난 기록이 있으면 정리 바(건수 + 정리 버튼). 누르면 확인 후 삭제.
+    const stale = staleHistory();
+    if (stale.length) {
+      const bar = el("div", "hist-cleanup");
+      bar.append(el("span", "hist-cleanup-txt", `30일 지난 기록 ${stale.length}건`));
+      const btn = el("button", "hist-cleanup-btn", "정리");
+      btn.type = "button";
+      btn.addEventListener("click", () => {
+        askConfirm(`30일 지난 구매 기록 ${stale.length}건을 삭제할까요? 삭제하면 되돌릴 수 없어요.`)
+          .then((ok) => { if (ok) deleteStaleHistory(); });
+      });
+      bar.append(btn);
+      appHeader.append(bar);
+    }
   }
 }
 
