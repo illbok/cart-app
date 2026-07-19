@@ -774,8 +774,9 @@ editSave.addEventListener("click", () => {
   closeDetail();
 });
 
-editDelete.addEventListener("click", () => {
+editDelete.addEventListener("click", async () => {
   if (editingId === null) return;
+  if (!(await askConfirm("이 품목을 삭제할까요?"))) return;
   deleteItem(editingId);
   closeDetail();
 });
@@ -949,9 +950,12 @@ function render() {
       const delBtn = document.createElement("button");
       delBtn.className = "del-btn";
       delBtn.textContent = "✕";
-      delBtn.addEventListener("click", (e) => {
+      delBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        deleteItem(item.id);
+        // 오터치로 바로 지워지지 않게 한 번 확인
+        if (await askConfirm(`'${item.name}'을(를) 삭제할까요?`)) {
+          deleteItem(item.id);
+        }
       });
 
       li.addEventListener("click", () => openDetail(item.id));
@@ -971,6 +975,15 @@ function render() {
   const base = view === "cart" ? "합계" : "총 구매액";
   totalLabel.textContent =
     filterCat === null && filterPri === null ? base : base + " (필터 적용)";
+
+  // 하단 고정바(모바일)를 위쪽 버튼/합계와 동일하게 맞춤
+  mbApply.hidden = applyBtn.hidden;
+  mbApply.textContent = applyBtn.textContent;
+  mbTotalVal.textContent = totalEl.textContent;
+  mbTotalLabel.textContent = totalLabel.textContent;
+
+  // 필터 버튼 배지 갱신
+  updateFilterBadge();
 }
 
 // ===== 이벤트 =====
@@ -1010,11 +1023,8 @@ checkAll.addEventListener("change", () => {
 });
 
 // 구매 완료(장바구니) / 되돌리기(기록) 버튼: 선택된 항목을 한 번에 실제 처리
-applyBtn.addEventListener("click", () => {
-  const ids = [...selected]; // Set → 배열
-  selected.clear(); // 처리 후에는 선택 초기화
-  bulkUpdate(ids, donePatch(view === "cart"));
-});
+// (하단 고정바의 버튼과 같은 applySelected를 공유)
+applyBtn.addEventListener("click", applySelected);
 
 // 탭 전환 (탭을 바꾸면 선택도 초기화)
 tabCart.addEventListener("click", () => {
@@ -1040,6 +1050,82 @@ window.addEventListener("online", () => {
   loadItems();
 });
 window.addEventListener("offline", updateOfflineBanner);
+
+// ===== 모바일: 필터 시트 =====
+// 폰에서는 사이드바가 아래에서 올라오는 시트로 동작. 버튼으로 열고,
+// 백드롭/완료 버튼으로 닫음. (데스크톱에선 버튼이 숨겨져 있어 항상 사이드바 그대로)
+const sidebarEl = document.getElementById("sidebar");
+const filterToggle = document.getElementById("filter-toggle");
+const filterBadge = document.getElementById("filter-badge");
+const sheetClose = document.getElementById("sheet-close");
+const sheetBackdrop = document.getElementById("sheet-backdrop");
+
+function openSheet() {
+  sidebarEl.classList.add("open");
+  sheetBackdrop.hidden = false;
+}
+function closeSheet() {
+  sidebarEl.classList.remove("open");
+  sheetBackdrop.hidden = true;
+}
+filterToggle.addEventListener("click", openSheet);
+sheetClose.addEventListener("click", closeSheet);
+sheetBackdrop.addEventListener("click", closeSheet);
+
+// 필터 버튼 옆 배지: 지금 걸린 필터(분류/중요도)를 요약해 보여줌
+function updateFilterBadge() {
+  const parts = [];
+  if (filterCat) parts.push(filterCat);
+  if (filterPri) parts.push(priorityInfo(filterPri).label);
+  if (parts.length) {
+    filterBadge.textContent = parts.join(" · ");
+    filterBadge.hidden = false;
+  } else {
+    filterBadge.hidden = true;
+  }
+}
+
+// ===== 모바일: 하단 고정 액션바 =====
+// 합계와 "구매 완료/되돌리기" 버튼을 화면 하단에 항상 띄움(긴 목록 대비).
+// 내용은 render()가 위쪽 applyBtn/합계와 똑같이 맞춰 줌.
+const mbApply = document.getElementById("mb-apply");
+const mbTotalVal = document.getElementById("mb-total-val");
+const mbTotalLabel = document.getElementById("mb-total-label");
+
+// 선택한 항목을 실제 처리(구매완료/되돌리기) — 위/아래 두 버튼이 공유
+function applySelected() {
+  const ids = [...selected];
+  selected.clear();
+  bulkUpdate(ids, donePatch(view === "cart"));
+}
+mbApply.addEventListener("click", applySelected);
+
+// ===== 삭제 확인 대화상자 =====
+// 되돌리기가 없는 단일 삭제 전에 한 번 더 확인. Promise로 만들어
+// `if (await askConfirm(...))` 처럼 자연스럽게 쓸 수 있게 함.
+const confirmBackdrop = document.getElementById("confirm-backdrop");
+const confirmMsg = document.getElementById("confirm-msg");
+const confirmOk = document.getElementById("confirm-ok");
+const confirmCancel = document.getElementById("confirm-cancel");
+let confirmResolve = null;
+
+function askConfirm(message) {
+  confirmMsg.textContent = message;
+  confirmBackdrop.hidden = false;
+  return new Promise((resolve) => (confirmResolve = resolve));
+}
+function settleConfirm(result) {
+  confirmBackdrop.hidden = true;
+  if (confirmResolve) {
+    confirmResolve(result);
+    confirmResolve = null;
+  }
+}
+confirmOk.addEventListener("click", () => settleConfirm(true));
+confirmCancel.addEventListener("click", () => settleConfirm(false));
+confirmBackdrop.addEventListener("click", (e) => {
+  if (e.target === confirmBackdrop) settleConfirm(false);
+});
 
 // ===== 시작 =====
 async function init() {

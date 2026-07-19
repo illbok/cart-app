@@ -14,8 +14,14 @@
   <!-- layout: 왼쪽 사이드바 + 오른쪽 본문 (모바일에서는 위/아래로 쌓임) -->
   <div class="layout">
 
-    <!-- 사이드바: 필터 + 드래그 놓는 곳. 내용은 JS가 채움 -->
-    <aside class="sidebar">
+    <!-- 사이드바: 필터 + 드래그 놓는 곳. 내용은 JS가 채움.
+         모바일에서는 아래에서 올라오는 시트(bottom sheet)로 바뀜 -->
+    <aside class="sidebar" id="sidebar">
+      <!-- 시트 헤더: 모바일에서만 보임 (닫기 버튼) -->
+      <div class="sheet-header">
+        <span class="sheet-title">필터</span>
+        <button type="button" id="sheet-close" class="secondary small">완료</button>
+      </div>
       <div class="side-section">
         <div class="side-title">분류</div>
         <div id="side-cats"></div>
@@ -35,6 +41,12 @@
         <button type="button" id="tab-cart" class="tab active">장바구니</button>
         <button type="button" id="tab-history" class="tab">구매 기록</button>
       </div>
+
+      <!-- 모바일 전용: 필터 시트를 여는 버튼. 활성 필터가 있으면 배지로 표시 -->
+      <button type="button" id="filter-toggle" class="filter-toggle">
+        <span>필터</span>
+        <span id="filter-badge" class="filter-badge" hidden></span>
+      </button>
 
       <form id="add-form">
         <!-- 1행: 대분류 / 소분류 / 중요도 -->
@@ -82,6 +94,29 @@
       </div>
 
     </main>
+  </div>
+
+  <!-- 모바일 필터 시트 뒤 어두운 배경 (탭하면 시트 닫힘) -->
+  <div id="sheet-backdrop" hidden></div>
+
+  <!-- 모바일 전용: 화면 하단에 고정되는 액션 바 (합계 + 선택 처리 버튼) -->
+  <div id="mobile-bar">
+    <div class="mb-total">
+      <span id="mb-total-label">합계</span>
+      <strong id="mb-total-val">0원</strong>
+    </div>
+    <button type="button" id="mb-apply" class="mb-apply" hidden>구매 완료</button>
+  </div>
+
+  <!-- 삭제 확인 대화상자 (되돌리기 없는 작업이라 한 번 더 확인) -->
+  <div id="confirm-backdrop" hidden>
+    <div id="confirm-box">
+      <p id="confirm-msg">삭제할까요?</p>
+      <div class="confirm-actions">
+        <button type="button" id="confirm-cancel" class="secondary">취소</button>
+        <button type="button" id="confirm-ok" class="danger">삭제</button>
+      </div>
+    </div>
   </div>
 
   <!-- 상세/수정 모달: 평소엔 숨겨져 있다가 품목을 클릭하면 표시됨 -->
