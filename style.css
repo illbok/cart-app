@@ -575,6 +575,8 @@ select { -webkit-appearance: none; appearance: none; }
 .cat-row { display: flex; gap: 6px; align-items: stretch; }
 .cat-row .cat-name { flex: 1; min-width: 0; padding: 12px 14px; font-size: 15px; }
 .cat-row .cat-price { width: 74px; flex: none; padding: 12px 10px; font-size: 15px; }
+.cat-row--dirty .cat-name, .cat-row--dirty .cat-price { border-color: var(--indigo); background: #f5f6ff; }
+.cat-hint { font-size: 12px; color: #8b8f98; margin: 2px 0 10px; }
 .cat-save {
   flex: none;
   border: none;

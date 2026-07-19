@@ -933,7 +933,7 @@ function buildCatalogSheet(cat) {
   sheetHost.innerHTML = "";
   const close = el("button", "sheet-close", "×");
   close.type = "button";
-  close.addEventListener("click", closeSheet);
+  close.addEventListener("click", () => saveAllAndClose());
   const s = sheetShell("추천 품목 · " + cat, close);
   const body = el("div", "sheet-body sh");
 
@@ -965,18 +965,55 @@ function buildCatalogSheet(cat) {
 
   // 현재 목록
   body.append(el("div", "field-label cat-list-label", "현재 추천 품목"));
+  const hint = el("div", "cat-hint", "이름·가격을 고친 뒤 아래 완료를 누르면 한 번에 저장돼요");
+  body.append(hint);
   const list = el("div", "cat-list");
   body.append(list);
   s.append(body);
 
   const done = el("button", "sheet-primary", "완료");
   done.type = "button";
-  done.addEventListener("click", closeSheet);
+  done.addEventListener("click", () => saveAllAndClose());
   s.append(done);
   sheetHost.append(s);
 
+  // 각 행의 입력창 추적(완료 시 일괄 저장). renderList가 새로 채움
+  let editors = [];
+
+  // 완료/× → 편집한 모든 행 + 입력 중인 새 품목을 한 번에 저장하고 닫기
+  async function saveAllAndClose() {
+    const newName = nameI.value.trim();
+    const dirty = editors.filter((e) => {
+      const nm = e.nI.value.trim();
+      return nm && (nm !== e.r.name || (Number(e.pI.value) || 0) !== e.r.price);
+    });
+    // 저장할 게 없으면 그냥 닫기
+    if (!newName && dirty.length === 0) { closeSheet(); return; }
+    if (isOffline()) { showError("오프라인 상태예요. 추천 품목 편집은 인터넷 연결 후 가능해요"); return; }
+
+    done.disabled = true;
+    let saved = 0, failed = 0;
+    // 1) 입력 중이던 새 품목이 있으면 추가
+    if (newName) {
+      const ok = await addCatalogItem(cat, newName, Number(priceI.value) || 0);
+      if (ok) { nameI.value = ""; priceI.value = ""; saved++; } else { failed++; }
+    }
+    // 2) 변경된 행들 저장
+    for (const e of dirty) {
+      const ok = await updateCatalogItem(e.r.id, { name: e.nI.value.trim(), price: Number(e.pI.value) || 0 });
+      if (ok) saved++; else failed++;
+    }
+    done.disabled = false;
+
+    if (saved) showNotice(`${saved}개 저장했어요`);
+    // 실패(중복 이름 등)가 있으면 닫지 않고 고칠 수 있게 둠
+    if (failed > 0) { renderList(); return; }
+    closeSheet();
+  }
+
   function renderList() {
     list.innerHTML = "";
+    editors = [];
     const rows = catalogFor(cat);
     if (rows.length === 0) {
       list.append(el("div", "cat-empty", "아직 추천 품목이 없어요. 위에서 추가해 보세요"));
@@ -990,14 +1027,13 @@ function buildCatalogSheet(cat) {
       pI.setAttribute("inputmode", "numeric");
       pI.value = String(r.price);
       pI.addEventListener("input", () => { pI.value = pI.value.replace(/[^0-9]/g, ""); });
-      const save = el("button", "cat-save", "저장");
-      save.type = "button";
-      save.addEventListener("click", async () => {
-        const nm = nI.value.trim();
-        if (!nm) { nI.value = r.name; return; }
-        const ok = await updateCatalogItem(r.id, { name: nm, price: Number(pI.value) || 0 });
-        if (ok) { showNotice("수정했어요"); renderList(); }
-      });
+      // 변경되면 행 강조(완료 시 저장될 항목 표시)
+      const mark = () => {
+        const changed = nI.value.trim() !== r.name || (Number(pI.value) || 0) !== r.price;
+        row.classList.toggle("cat-row--dirty", changed);
+      };
+      nI.addEventListener("input", mark);
+      pI.addEventListener("input", mark);
       const del = el("button", "cat-del", "삭제");
       del.type = "button";
       del.addEventListener("click", async () => {
@@ -1005,8 +1041,9 @@ function buildCatalogSheet(cat) {
         const ok = await deleteCatalogItem(r.id);
         if (ok) renderList();
       });
-      row.append(nI, pI, save, del);
+      row.append(nI, pI, del);
       list.append(row);
+      editors.push({ r, nI, pI });
     });
   }
   renderList();
