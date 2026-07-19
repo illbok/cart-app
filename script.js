@@ -370,6 +370,43 @@ async function searchNaver(q) {
   const data = await res.json();
   return data.items || [];
 }
+// ===== 추천 품목(catalog) 로컬 자동완성 =====
+// 정규화: 소문자 + 공백 제거 (띄어쓰기 차이를 무시하고 매칭)
+function normKo(s) { return (s || "").toLowerCase().replace(/\s+/g, ""); }
+// 입력어 q와 유사한 추천 품목을 전체 분류에서 찾음. startsWith > includes 우선.
+function matchCatalog(q) {
+  const nq = normKo(q);
+  if (!nq) return [];
+  const scored = [];
+  catalog.forEach((r) => {
+    const nn = normKo(r.name);
+    let score;
+    if (nn === nq) score = 0;               // 완전 일치
+    else if (nn.startsWith(nq)) score = 1;  // 앞부분 일치("우유"→"우유 (1L)")
+    else if (nn.includes(nq)) score = 2;    // 중간 포함
+    else if (nn.length >= 2 && nq.includes(nn)) score = 3; // 입력이 품목명을 포함
+    else return;
+    scored.push({ r, score });
+  });
+  scored.sort((a, b) => a.score - b.score || a.r.name.length - b.r.name.length);
+  return scored.slice(0, 6).map((x) => x.r);
+}
+// catalog 매칭 결과를 container에 그림. 이름·분류태그·가격. 클릭 시 onPick(r)
+function renderCatalogSugsInto(container, rows, onPick) {
+  container.innerHTML = "";
+  if (!rows || !rows.length) { container.hidden = true; return; }
+  container.hidden = false;
+  container.append(el("div", "sugs-label", "추천 품목 · 눌러서 반영"));
+  rows.forEach((r) => {
+    const row = el("div", "sug-item");
+    const left = el("div", "sug-name-wrap");
+    left.append(el("span", "sug-name", r.name), el("span", "sug-cat", r.cat));
+    row.append(left, el("span", "sug-price", money(r.price)));
+    row.addEventListener("click", () => onPick(r));
+    container.append(row);
+  });
+}
+
 // 추천 목록을 container에 그림. 클릭하면 onPick(s)
 function renderSugsInto(container, sugs, onPick) {
   container.innerHTML = "";
@@ -682,14 +719,7 @@ function buildAddSheet() {
     const b = el("button", "chip-pick", c);
     b.type = "button";
     if (add.cat === c) b.classList.add("is-on");
-    b.addEventListener("click", () => {
-      add.cat = c; add.name = ""; add.price = "";
-      catBtns.forEach((x) => x.b.classList.toggle("is-on", x.c === c));
-      nameInput.value = ""; priceInput.value = "";
-      fillAddSub(subSelect);
-      addSugs.hidden = true; addSugs.innerHTML = "";
-      updateAddBtn();
-    });
+    b.addEventListener("click", () => setCat(c, true)); // 분류 직접 바꾸면 품목명 초기화
     catBtns.push({ b, c });
     catScroll.append(b);
   });
@@ -729,25 +759,50 @@ function buildAddSheet() {
   const addSugs = el("div", "sugs");
   addSugs.hidden = true;
   body.append(addSugs);
+  function hideSugs() { addSugs.hidden = true; addSugs.innerHTML = ""; }
+  // 분류 전환(칩 하이라이트 + 서브셀렉트 갱신). clearName이면 품목명/가격도 비움.
+  function setCat(c, clearName) {
+    add.cat = c;
+    catBtns.forEach((x) => x.b.classList.toggle("is-on", x.c === c));
+    if (clearName) { add.name = ""; add.price = ""; nameInput.value = ""; priceInput.value = ""; hideSugs(); }
+    fillAddSub(subSelect);
+    updateAddBtn();
+  }
+  // 추천 품목(catalog) 선택 → 분류 전환 + 이름/가격/서브셀렉트 반영
+  function pickCatalog(r) {
+    setCat(r.cat, false);
+    add.name = r.name; add.price = String(r.price);
+    nameInput.value = r.name; priceInput.value = add.price;
+    subSelect.value = r.id;
+    hideSugs();
+    updateAddBtn();
+  }
   nameInput.addEventListener("input", () => {
     add.name = nameInput.value;
     updateAddBtn();
     clearTimeout(addSugTimer);
     const q = nameInput.value.trim();
-    if (q.length < 2) { addSugs.hidden = true; addSugs.innerHTML = ""; return; }
+    if (!q) { hideSugs(); return; }
+    // 1) 추천 품목(로컬)에서 유사 항목 먼저 찾음 — 있으면 그것만 보여줌
+    const hits = matchCatalog(q);
+    if (hits.length) { renderCatalogSugsInto(addSugs, hits, pickCatalog); return; }
+    // 2) 추천에 없을 때만 네이버 쇼핑 보조 (2자↑, 디바운스)
+    if (q.length < 2) { hideSugs(); return; }
     addSugTimer = setTimeout(async () => {
       try {
         const sugs = await searchNaver(q);
         if (nameInput.value.trim() !== q) return;
+        // 응답 대기 중 입력이 바뀌어 추천 품목에 걸리면 그쪽을 우선
+        if (matchCatalog(nameInput.value.trim()).length) return;
         renderSugsInto(addSugs, sugs, (sug) => {
           add.name = summarizeName(sug.title);
           add.price = String(sug.lprice);
           nameInput.value = add.name;
           priceInput.value = add.price;
-          addSugs.hidden = true; addSugs.innerHTML = "";
+          hideSugs();
           updateAddBtn();
         });
-      } catch { addSugs.hidden = true; }
+      } catch { hideSugs(); }
     }, 300);
   });
 
