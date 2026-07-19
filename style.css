@@ -131,6 +131,31 @@ select { -webkit-appearance: none; appearance: none; }
 .hist-card-label { font-weight: 600; font-size: 12px; color: #9ea2ad; }
 .hist-card-total { margin-top: 6px; font-weight: 800; font-size: 28px; letter-spacing: -0.02em; }
 
+/* 30일 지난 기록 정리 바 (기록 헤더) */
+.hist-cleanup {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #fff4f2;
+  border: 1px solid #f3c9c1;
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+.hist-cleanup-txt { font-weight: 600; font-size: 13.5px; color: var(--danger); }
+.hist-cleanup-btn {
+  flex: none;
+  border: none;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
 /* ===== 퀵칩 (가로 스크롤) ===== */
 .chips {
   display: flex;
