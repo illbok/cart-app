@@ -517,6 +517,60 @@ select { -webkit-appearance: none; appearance: none; }
 .sug-price { font-weight: 700; font-size: 14px; color: var(--indigo); white-space: nowrap; }
 .sug-msg { font-size: 13px; color: var(--muted); padding: 11px 14px; }
 
+/* ===== 추천 품목 관리 시트 ===== */
+.cat-manage { font-weight: 700; font-size: 13px; padding: 2px 0; }
+.cat-offline {
+  background: #fef9c3;
+  color: #854d0e;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 14px;
+}
+.cat-add { display: flex; gap: 8px; margin-bottom: 20px; align-items: stretch; }
+.cat-add .cat-name { flex: 1; min-width: 0; }
+.cat-add .cat-price { width: 80px; flex: none; }
+.cat-add-btn {
+  flex: none;
+  border: none;
+  border-radius: 14px;
+  padding: 0 16px;
+  font-weight: 700;
+  font-size: 14px;
+  background: var(--indigo);
+  color: #fff;
+  cursor: pointer;
+}
+.cat-list-label { margin-top: 2px; }
+.cat-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 6px; }
+.cat-row { display: flex; gap: 6px; align-items: stretch; }
+.cat-row .cat-name { flex: 1; min-width: 0; padding: 12px 14px; font-size: 15px; }
+.cat-row .cat-price { width: 74px; flex: none; padding: 12px 10px; font-size: 15px; }
+.cat-save {
+  flex: none;
+  border: none;
+  border-radius: 12px;
+  padding: 0 13px;
+  font-weight: 700;
+  font-size: 13px;
+  background: #eef0ff;
+  color: var(--indigo);
+  cursor: pointer;
+}
+.cat-del {
+  flex: none;
+  border: none;
+  border-radius: 12px;
+  padding: 0 13px;
+  font-weight: 700;
+  font-size: 13px;
+  background: #fef2f2;
+  color: var(--danger);
+  cursor: pointer;
+}
+.cat-empty { text-align: center; padding: 24px; color: #a3a8b0; font-size: 13px; font-weight: 500; }
+
 /* ===== 필터 시트 전용 ===== */
 .preset-row { display: flex; gap: 9px; margin-bottom: 22px; }
 .preset {

@@ -12,11 +12,15 @@ let filterCats = [];
 let filterPris = [];
 // 선택된 항목 id 모음(화면 전용). 체크는 고르기만, 처리는 하단 버튼이 함.
 let selected = new Set();
-// 열려 있는 바텀시트: null | "add" | "filter" | "edit"
+// 열려 있는 바텀시트: null | "add" | "filter" | "edit" | "catalog"
 let sheet = null;
 const FIRST_CAT = Object.keys(CATEGORIES)[0];
 let add = { cat: FIRST_CAT, name: "", price: "", qty: 1, pri: 3 };
 let edit = null;
+// 추천 품목(카탈로그): DB(catalog_items)에서 불러옴. row: {id, cat, name, price}
+let catalog = [];
+// 추천 품목 관리 시트를 닫을 때 돌아갈 추가 시트의 분류
+let catalogReturnCat = null;
 
 // ===== 요소 참조 =====
 const appHeader = document.getElementById("app-header");
@@ -84,6 +88,62 @@ function saveCache() {
 }
 function loadCache() {
   try { items = JSON.parse(localStorage.getItem(CACHE_KEY)) || []; } catch { items = []; }
+}
+
+// ===== 추천 품목(카탈로그) =====
+// 편집은 온라인 전용(오프라인에선 캐시로 보기만). 목록은 localStorage에 캐시.
+const CATALOG_KEY = "cart-catalog";
+function saveCatalogCache() {
+  try { localStorage.setItem(CATALOG_KEY, JSON.stringify(catalog)); } catch {}
+}
+// data.js의 CATEGORIES를 카탈로그 형태로 변환 (오프라인 첫 실행 등 폴백용)
+function catalogFromDefaults() {
+  const out = [];
+  Object.keys(CATEGORIES).forEach((c) => {
+    const subs = CATEGORIES[c] || {};
+    Object.keys(subs).forEach((n) => out.push({ id: "def-" + c + "-" + n, cat: c, name: n, price: subs[n] }));
+  });
+  return out;
+}
+function loadCatalogCache() {
+  try { catalog = JSON.parse(localStorage.getItem(CATALOG_KEY)) || []; } catch { catalog = []; }
+  if (catalog.length === 0) catalog = catalogFromDefaults();
+}
+function catalogFor(cat) { return catalog.filter((r) => r.cat === cat); }
+async function fetchCatalog() {
+  if (isOffline()) return;
+  const { data, error } = await sb.from("catalog_items").select("*").order("created_at");
+  if (error) return; // 실패해도 캐시 유지
+  catalog = data;
+  saveCatalogCache();
+}
+async function addCatalogItem(cat, name, price) {
+  if (isOffline()) { showError("추천 품목 편집은 인터넷 연결 후 가능해요"); return false; }
+  const { data, error } = await sb.from("catalog_items").insert({ cat, name, price }).select().single();
+  if (error) { showError(error.code === "23505" ? "이미 있는 추천 품목이에요" : "추가에 실패했어요"); return false; }
+  catalog.push(data);
+  saveCatalogCache();
+  return true;
+}
+async function updateCatalogItem(id, patch) {
+  if (isOffline()) { showError("추천 품목 편집은 인터넷 연결 후 가능해요"); return false; }
+  const { data, error } = await sb
+    .from("catalog_items")
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq("id", id).select().single();
+  if (error) { showError(error.code === "23505" ? "같은 이름의 추천 품목이 이미 있어요" : "수정에 실패했어요"); return false; }
+  const i = catalog.findIndex((r) => r.id === id);
+  if (i !== -1) catalog[i] = data;
+  saveCatalogCache();
+  return true;
+}
+async function deleteCatalogItem(id) {
+  if (isOffline()) { showError("추천 품목 편집은 인터넷 연결 후 가능해요"); return false; }
+  const { error } = await sb.from("catalog_items").delete().eq("id", id);
+  if (error) { showError("삭제에 실패했어요"); return false; }
+  catalog = catalog.filter((r) => r.id !== id);
+  saveCatalogCache();
+  return true;
 }
 
 // ===== 오프라인 변경 큐 =====
@@ -227,6 +287,7 @@ async function loadItems() {
   if (isOffline()) return updateOfflineBanner();
   if (queue.length > 0) return flushQueue();
   await fetchItems();
+  fetchCatalog(); // 추천 품목도 최신화 (실패해도 조용히)
 }
 async function addItem(fields) {
   if (isOffline()) {
@@ -545,9 +606,13 @@ function renderBottom(isCart) {
 // ===== 바텀시트 공통 =====
 function showBackdrop() { sheetBackdrop.hidden = false; }
 function closeSheet() {
+  // 추천 품목 관리 시트를 닫으면 원래 추가 시트로 복귀
+  const back = sheet === "catalog" ? catalogReturnCat : null;
+  catalogReturnCat = null;
   sheet = null;
   sheetHost.innerHTML = "";
   sheetBackdrop.hidden = true;
+  if (back) openAddSheet(back);
 }
 function sheetShell(title, rightNode) {
   const s = el("div", "sheet");
@@ -595,9 +660,9 @@ function stepper(getVal, setVal) {
 
 // ===== 추가 시트 =====
 let addSugTimer;
-function openAddSheet() {
+function openAddSheet(presetCat) {
   sheet = "add";
-  add = { cat: FIRST_CAT, name: "", price: "", qty: 1, pri: 3 };
+  add = { cat: presetCat || FIRST_CAT, name: "", price: "", qty: 1, pri: 3 };
   buildAddSheet();
   showBackdrop();
 }
@@ -630,16 +695,25 @@ function buildAddSheet() {
   });
   body.append(catScroll);
 
-  // 추천 품목 select
-  body.append(el("div", "field-label", "추천 품목"));
+  // 추천 품목 select (+ 편집 버튼)
+  const subHead = el("div", "field-row");
+  subHead.append(el("span", "field-label", "추천 품목"));
+  const manageLink = el("button", "sheet-link cat-manage", "＋ 편집");
+  manageLink.type = "button";
+  manageLink.style.color = "var(--indigo)";
+  manageLink.addEventListener("click", () => openCatalogSheet(add.cat));
+  subHead.append(manageLink);
+  body.append(subHead);
   const subSelect = el("select", "fld");
   subSelect.style.marginBottom = "14px";
   fillAddSub(subSelect);
   subSelect.addEventListener("change", () => {
-    const n = subSelect.value;
-    if (!n) return;
-    add.name = n; add.price = String(CATEGORIES[add.cat][n]);
-    nameInput.value = n; priceInput.value = add.price;
+    const id = subSelect.value;
+    if (!id) return;
+    const r = catalog.find((x) => x.id === id);
+    if (!r) return;
+    add.name = r.name; add.price = String(r.price);
+    nameInput.value = r.name; priceInput.value = add.price;
     addSugs.hidden = true; addSugs.innerHTML = "";
     updateAddBtn();
   });
@@ -736,12 +810,101 @@ function fillAddSub(subSelect) {
   const manual = document.createElement("option");
   manual.value = ""; manual.textContent = "직접 입력";
   subSelect.append(manual);
-  const subs = CATEGORIES[add.cat] || {};
-  Object.keys(subs).forEach((n) => {
+  catalogFor(add.cat).forEach((r) => {
     const o = document.createElement("option");
-    o.value = n; o.textContent = n + " — 약 " + money(subs[n]);
+    o.value = r.id; o.textContent = r.name + " — 약 " + money(r.price);
     subSelect.append(o);
   });
+}
+
+// ===== 추천 품목 관리 시트 =====
+function openCatalogSheet(cat) {
+  catalogReturnCat = cat; // 닫으면 이 분류의 추가 시트로 복귀
+  sheet = "catalog";
+  buildCatalogSheet(cat);
+  showBackdrop();
+}
+function buildCatalogSheet(cat) {
+  sheetHost.innerHTML = "";
+  const close = el("button", "sheet-close", "×");
+  close.type = "button";
+  close.addEventListener("click", closeSheet);
+  const s = sheetShell("추천 품목 · " + cat, close);
+  const body = el("div", "sheet-body sh");
+
+  if (isOffline()) {
+    const warn = el("div", "cat-offline", "오프라인 상태예요. 추천 품목 편집은 인터넷 연결 후 가능해요.");
+    body.append(warn);
+  }
+
+  // 새 추천 품목 추가
+  body.append(el("div", "field-label", "새 추천 품목 추가"));
+  const addRow = el("div", "cat-add");
+  const nameI = el("input", "fld cat-name");
+  nameI.placeholder = "품목명 (예: 우유 (1L))";
+  nameI.autocomplete = "off";
+  const priceI = el("input", "fld fld--price cat-price");
+  priceI.setAttribute("inputmode", "numeric");
+  priceI.placeholder = "가격";
+  priceI.addEventListener("input", () => { priceI.value = priceI.value.replace(/[^0-9]/g, ""); });
+  const addBtn = el("button", "cat-add-btn", "추가");
+  addBtn.type = "button";
+  addBtn.addEventListener("click", async () => {
+    const nm = nameI.value.trim();
+    if (!nm) return;
+    const ok = await addCatalogItem(cat, nm, Number(priceI.value) || 0);
+    if (ok) { nameI.value = ""; priceI.value = ""; renderList(); showNotice("추천 품목을 추가했어요"); }
+  });
+  addRow.append(nameI, priceI, addBtn);
+  body.append(addRow);
+
+  // 현재 목록
+  body.append(el("div", "field-label cat-list-label", "현재 추천 품목"));
+  const list = el("div", "cat-list");
+  body.append(list);
+  s.append(body);
+
+  const done = el("button", "sheet-primary", "완료");
+  done.type = "button";
+  done.addEventListener("click", closeSheet);
+  s.append(done);
+  sheetHost.append(s);
+
+  function renderList() {
+    list.innerHTML = "";
+    const rows = catalogFor(cat);
+    if (rows.length === 0) {
+      list.append(el("div", "cat-empty", "아직 추천 품목이 없어요. 위에서 추가해 보세요"));
+      return;
+    }
+    rows.forEach((r) => {
+      const row = el("div", "cat-row");
+      const nI = el("input", "fld cat-name");
+      nI.value = r.name;
+      const pI = el("input", "fld fld--price cat-price");
+      pI.setAttribute("inputmode", "numeric");
+      pI.value = String(r.price);
+      pI.addEventListener("input", () => { pI.value = pI.value.replace(/[^0-9]/g, ""); });
+      const save = el("button", "cat-save", "저장");
+      save.type = "button";
+      save.addEventListener("click", async () => {
+        const nm = nI.value.trim();
+        if (!nm) { nI.value = r.name; return; }
+        const ok = await updateCatalogItem(r.id, { name: nm, price: Number(pI.value) || 0 });
+        if (ok) { showNotice("수정했어요"); renderList(); }
+      });
+      const del = el("button", "cat-del", "삭제");
+      del.type = "button";
+      del.addEventListener("click", async () => {
+        if (!(await askConfirm(`'${r.name}'을(를) 추천 목록에서 지울까요?`))) return;
+        const ok = await deleteCatalogItem(r.id);
+        if (ok) renderList();
+      });
+      row.append(nI, pI, save, del);
+      list.append(row);
+    });
+  }
+  renderList();
 }
 
 // ===== 필터 시트 =====
@@ -1012,7 +1175,7 @@ confirmCancel.addEventListener("click", () => settleConfirm(false));
 confirmBackdrop.addEventListener("click", (e) => { if (e.target === confirmBackdrop) settleConfirm(false); });
 
 // ===== 전역 이벤트 =====
-fab.addEventListener("click", openAddSheet);
+fab.addEventListener("click", () => openAddSheet());
 sheetBackdrop.addEventListener("click", closeSheet);
 
 document.addEventListener("visibilitychange", () => { if (!document.hidden) loadItems(); });
@@ -1022,6 +1185,7 @@ window.addEventListener("offline", updateOfflineBanner);
 // ===== 시작 =====
 async function init() {
   loadCache();
+  loadCatalogCache();
   loadQueue();
   render();
   updateOfflineBanner();
