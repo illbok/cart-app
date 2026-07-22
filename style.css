@@ -52,8 +52,11 @@ select { -webkit-appearance: none; appearance: none; }
   position: relative;
   width: 100%;
   max-width: var(--app-w);
-  min-height: 100vh;
-  min-height: 100dvh;
+  /* 뷰포트 높이로 '고정'(min-height 아님) — 목록이 길어도 #app이 화면보다
+     커지지 않게 해서, 안쪽 .screen만 스크롤되고 하단 탭바는 항상 보이게 함.
+     100dvh = 모바일 주소창 노출/숨김에 맞춰 실제 보이는 높이(100vh 폴백) */
+  height: 100vh;
+  height: 100dvh;
   background: #fbfbfc;
   display: flex;
   flex-direction: column;
