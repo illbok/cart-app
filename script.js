@@ -630,7 +630,7 @@ function buildRow(it) {
 
   const main = el("div", "row-main");
   const name = el("div", "row-name" + (it.done ? " is-done" : ""));
-  name.append(document.createTextNode(it.name + " "));
+  name.append(el("span", "row-name-txt", it.name));
   name.append(el("span", "qty", "×" + it.qty));
   const meta = el("div", "row-meta");
   const dot = el("span", "pri-dot");
