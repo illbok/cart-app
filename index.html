@@ -23,6 +23,15 @@
     <!-- 퀵칩 (장바구니 탭에서만) -->
     <div id="quick-chips" class="chips sh" hidden></div>
 
+    <!-- 빠른 추가 바 (장바구니 탭에서만): 이름만 치고 담기 -->
+    <div id="quick-add" class="quick-add sh" hidden>
+      <div class="qa-row">
+        <input id="qa-input" class="qa-input" type="text" placeholder="빠르게 담기 (예: 우유)" autocomplete="off" enterkeyhint="done" />
+        <button id="qa-btn" class="qa-btn" type="button">담기</button>
+      </div>
+      <div id="qa-sugs" class="sugs qa-sugs" hidden></div>
+    </div>
+
     <!-- 목록 (분류/날짜별 카드) -->
     <div id="screen" class="screen sh"></div>
 

@@ -755,3 +755,63 @@ select { -webkit-appearance: none; appearance: none; }
 
 @keyframes sheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* ===== 빠른 추가 바 (장바구니 탭) ===== */
+.quick-add {
+  position: relative;
+  flex: none;
+  padding: 10px 22px 2px;
+}
+.qa-row { display: flex; gap: 8px; }
+.qa-input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 14px;
+  font-size: 16px; /* iOS 자동 확대 방지 */
+  border: 1.5px solid #e6e7ea;
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+}
+.qa-input::placeholder { color: #b3b7bf; }
+.qa-input:focus { outline: none; border-color: var(--indigo); }
+.qa-btn {
+  flex: none;
+  height: 44px;
+  padding: 0 18px;
+  border: none;
+  border-radius: 12px;
+  background: var(--indigo);
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+}
+.qa-btn:active { opacity: 0.85; }
+/* 빠른 추가 바 아래 떠 있는 추천 드롭다운 */
+.qa-sugs {
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  top: calc(100% + 4px);
+  z-index: 40;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+  margin-bottom: 0;
+}
+
+/* 필터로 목록이 비었을 때 '전체 보기' 버튼 */
+.empty-showall {
+  display: block;
+  margin: 0 auto;
+  padding: 10px 20px;
+  border: 1px solid var(--indigo);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--indigo);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+.empty-showall:active { background: #eef0ff; }

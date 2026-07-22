@@ -9,7 +9,8 @@ let items = [];
 let view = "cart"; // "cart" | "history"
 // 필터는 다중 선택(배열). 비어 있으면 전체.
 let filterCats = [];
-let filterPris = [];
+let filterPris = [1, 2]; // 기본은 '급한 것만'(중요도 1~2). 사용자가 필터를 건드리면 filterTouched=true
+let filterTouched = false; // 사용자가 필터를 직접 선택했는지 (급한 것 0일 때 자동 완화 판단용)
 // 선택된 항목 id 모음(화면 전용). 체크는 고르기만, 처리는 하단 버튼이 함.
 let selected = new Set();
 // 열려 있는 바텀시트: null | "add" | "filter" | "edit" | "catalog"
@@ -25,6 +26,7 @@ let catalogReturnCat = null;
 // ===== 요소 참조 =====
 const appHeader = document.getElementById("app-header");
 const quickChips = document.getElementById("quick-chips");
+const quickAddBar = document.getElementById("quick-add");
 const screen = document.getElementById("screen");
 const fab = document.getElementById("fab");
 const actionBar = document.getElementById("action-bar");
@@ -477,7 +479,14 @@ function clearSelectedItems() {
 function render() {
   saveCache();
   const isCart = view === "cart";
-  const vis = visibleItems();
+  let vis = visibleItems();
+  // 기본 '급한 것만'인데 급한 항목이 하나도 없으면(사용자가 필터를 직접 고르기 전 한정)
+  // 화면이 텅 비어 보이지 않도록 전체로 완화한다.
+  if (isCart && !filterTouched && vis.length === 0 && currentPool().length > 0) {
+    filterCats = [];
+    filterPris = [];
+    vis = visibleItems();
+  }
   const total = vis.reduce((t, i) => t + i.price * i.qty, 0);
   const pool = currentPool();
 
@@ -487,6 +496,7 @@ function render() {
 
   renderHeader(isCart, pool, total);
   renderChips(isCart, pool);
+  quickAddBar.hidden = !isCart; // 빠른 추가 바는 장바구니 탭에서만
   renderScreen(isCart, vis);
   renderBottom(isCart);
   updateOfflineBanner();
@@ -558,10 +568,11 @@ function renderChips(isCart, pool) {
   const urgentCount = pool.filter((x) => x.priority <= 2).length;
 
   quickChips.append(
-    makeChip("전체 " + pool.length, noFilter, () => { filterCats = []; filterPris = []; render(); })
+    makeChip("전체 " + pool.length, noFilter, () => { filterTouched = true; filterCats = []; filterPris = []; render(); })
   );
   quickChips.append(
     makeChip("급한 것만 " + urgentCount, urgentActive, () => {
+      filterTouched = true;
       if (urgentActive) { filterCats = []; filterPris = []; }
       else { filterCats = []; filterPris = [1, 2]; }
       render();
@@ -572,6 +583,7 @@ function renderChips(isCart, pool) {
     const active = filterCats.length === 1 && filterCats[0] === c;
     quickChips.append(
       makeChip(c + " " + pool.filter((x) => x.cat === c).length, active, () => {
+        filterTouched = true;
         filterCats = filterCats.length === 1 && filterCats[0] === c ? [] : [c];
         render();
       })
@@ -588,6 +600,13 @@ function renderScreen(isCart, vis) {
     const e = el("div", "empty", msg);
     e.style.whiteSpace = "pre-line";
     screen.append(e);
+    // 필터 때문에 비었을 때는 한 번에 전체로 돌아갈 버튼 제공
+    if (isCart && currentPool().length) {
+      const showAll = el("button", "empty-showall", "전체 보기");
+      showAll.type = "button";
+      showAll.addEventListener("click", () => { filterTouched = true; filterCats = []; filterPris = []; render(); });
+      screen.append(showAll);
+    }
     return;
   }
 
@@ -1059,7 +1078,7 @@ function buildFilterSheet() {
   sheetHost.innerHTML = "";
   const reset = el("button", "sheet-link", "초기화");
   reset.type = "button";
-  reset.addEventListener("click", () => { filterCats = []; filterPris = []; renderFilterBody(); render(); });
+  reset.addEventListener("click", () => { filterTouched = true; filterCats = []; filterPris = []; renderFilterBody(); render(); });
   const s = sheetShell("필터", reset);
   const body = el("div", "sheet-body sh");
   s.append(body);
@@ -1145,7 +1164,7 @@ function buildFilterSheet() {
     b.addEventListener("click", onClick);
     return b;
   }
-  function done() { renderFilterBody(); render(); } // 필터는 즉시 적용(뒤 화면도 갱신)
+  function done() { filterTouched = true; renderFilterBody(); render(); } // 필터는 즉시 적용(뒤 화면도 갱신)
   renderFilterBody();
 }
 
@@ -1319,6 +1338,37 @@ confirmBackdrop.addEventListener("click", (e) => { if (e.target === confirmBackd
 // ===== 전역 이벤트 =====
 fab.addEventListener("click", () => openAddSheet());
 sheetBackdrop.addEventListener("click", closeSheet);
+
+// ===== 빠른 추가 바 =====
+// 이름만 치고 담기 → 즉시 추가(중요도 High=2라 기본 급한화면에 바로 보임).
+// 추천 품목(catalog)에 이름이 일치하면 가격/분류를 자동으로 채움.
+const qaInput = document.getElementById("qa-input");
+const qaBtn = document.getElementById("qa-btn");
+const qaSugs = document.getElementById("qa-sugs");
+function qaHideSugs() { qaSugs.hidden = true; qaSugs.innerHTML = ""; }
+function quickAdd(name, catalogRow) {
+  const nm = (name || "").trim();
+  if (!nm) return;
+  // 넘겨받은 추천행 없으면 이름이 완전 일치하는 추천 품목을 찾아 가격/분류 반영
+  const hit = catalogRow || catalog.find((r) => normKo(r.name) === normKo(nm));
+  const cat = hit ? hit.cat : "기타";
+  const price = hit ? Number(hit.price) || 0 : 0;
+  qaInput.value = "";
+  qaHideSugs();
+  addItem({ name: hit ? hit.name : nm, price, qty: 1, done: false, cat, priority: 2 });
+  qaInput.focus();
+}
+qaBtn.addEventListener("click", () => quickAdd(qaInput.value));
+qaInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); quickAdd(qaInput.value); }
+});
+qaInput.addEventListener("input", () => {
+  const q = qaInput.value.trim();
+  if (!q) { qaHideSugs(); return; }
+  const hits = matchCatalog(q); // 로컬 추천 품목 유사 매칭 (네트워크 X)
+  if (hits.length) renderCatalogSugsInto(qaSugs, hits, (r) => quickAdd(r.name, r)); // 추천 탭 = 즉시 담기
+  else qaHideSugs();
+});
 
 document.addEventListener("visibilitychange", () => { if (!document.hidden) loadItems(); });
 window.addEventListener("online", () => { updateOfflineBanner(); loadItems(); });
